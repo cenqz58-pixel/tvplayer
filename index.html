@@ -2,301 +2,211 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0d1117">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>IPTV Player</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
-
-  body {
-    background: #0d1117;
-    color: #e6edf3;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* ---------- HEADER ---------- */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    background: linear-gradient(90deg, #161b22, #1f2937);
-    border-bottom: 1px solid #30363d;
-    flex-shrink: 0;
-    z-index: 20;
-  }
-
-  .logo { font-size: 20px; font-weight: bold; color: #58a6ff; white-space: nowrap; }
-  .logo span { color: #e6edf3; }
-
-  .search-bar { flex: 1; max-width: 400px; margin: 0 20px; position: relative; }
-  .search-bar input {
-    width: 100%; padding: 9px 40px 9px 14px;
-    background: #21262d; border: 1px solid #30363d;
-    border-radius: 8px; color: #e6edf3; outline: none; font-size: 13px;
-  }
-  .search-bar input:focus { border-color: #58a6ff; }
-  .search-bar::after {
-    content: "🔍"; position: absolute; right: 12px; top: 50%;
-    transform: translateY(-50%); opacity: 0.6;
-  }
-
-  .user-actions { display: flex; gap: 8px; align-items: center; }
-  .user-actions button {
-    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
-    padding: 8px 12px; border-radius: 8px; cursor: pointer;
-    transition: 0.2s; font-size: 13px; white-space: nowrap;
-  }
-  .user-actions button:hover,
-  .user-actions button:focus { background: #30363d; border-color: #58a6ff; outline: none; }
-  .user-actions button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-  .user-actions button.primary:hover { background: #388bfd; }
-
-  /* ---------- MAIN ---------- */
-  .main {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Video */
-  .video-container {
-    position: relative;
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+  html, body {
     background: #000;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    color: #e6edf3;
+    width: 100%;
+    height: 100%;
     overflow: hidden;
   }
 
   #iptv-video {
+    position: absolute;
+    top: 0; left: 0;
     width: 100%;
     height: 100%;
     background: #000;
     object-fit: contain;
-    transition: object-fit 0.2s;
+    z-index: 1;
   }
+  #iptv-video.ratio-4-3  { padding: 0 12%; }
+  #iptv-video.ratio-zoom { object-fit: cover; }
+  #iptv-video.ratio-fill { object-fit: fill; }
 
-  /* Seitenverhältnis-Modi */
-  .video-container.ratio-16-9 #iptv-video { object-fit: contain; }
-  .video-container.ratio-4-3  #iptv-video { object-fit: contain; padding: 0 12%; background: #000; }
-  .video-container.ratio-zoom #iptv-video { object-fit: cover; }
-  .video-container.ratio-fill #iptv-video { object-fit: fill; }
-
-  .video-placeholder {
-    position: absolute; text-align: center; color: #8b949e;
-    pointer-events: none;
-  }
-  .video-placeholder .play-icon {
-    font-size: 70px; color: rgba(255,255,255,0.3); margin-bottom: 10px;
-  }
-  .video-placeholder p { font-size: 14px; }
-
-  /* ---------- SENDER-LOGO GROSS ÜBER DEM VIDEO ---------- */
-  .channel-logo-overlay {
+  .zap-overlay {
     position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 160px;
-    height: 160px;
+    top: 30px;
+    left: 30px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 16px 24px;
+    border-radius: 10px;
+    border-left: 5px solid #58a6ff;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 20;
+    max-width: 60%;
+  }
+  .zap-overlay.show { opacity: 1; }
+  .zap-overlay .zap-name { font-size: 26px; font-weight: bold; color: #fff; }
+  .zap-overlay .zap-group { font-size: 15px; color: #8b949e; margin-top: 4px; }
+  .zap-overlay .zap-epg { font-size: 16px; color: #c9d1d9; margin-top: 8px; }
+
+  .logo-overlay {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    width: 180px;
+    height: 180px;
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 15px;
     opacity: 0;
-    transform: scale(0.9);
-    transition: opacity 0.4s, transform 0.4s;
+    transition: opacity 0.3s;
     pointer-events: none;
-    z-index: 12;
+    z-index: 20;
     border: 1px solid rgba(88, 166, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   }
-  .channel-logo-overlay.show {
-    opacity: 1;
-    transform: scale(1);
-  }
-  .channel-logo-overlay img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
-  }
-  .channel-logo-overlay .fallback {
-    font-size: 48px;
+  .logo-overlay.show { opacity: 1; }
+  .logo-overlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-overlay .fallback {
+    font-size: 56px;
     font-weight: bold;
     color: #58a6ff;
-    text-align: center;
   }
 
-  /* ---------- Zapping-Overlay (Sender-Name + EPG) ---------- */
-  .zap-overlay {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 12px 20px;
-    border-radius: 10px;
-    border-left: 4px solid #58a6ff;
-    opacity: 0;
-    transform: translateY(-10px);
-    transition: opacity 0.3s, transform 0.3s;
-    pointer-events: none;
-    z-index: 15;
-    max-width: calc(100% - 200px);
-  }
-  .zap-overlay.show { opacity: 1; transform: translateY(0); }
-  .zap-overlay .zap-name { font-size: 18px; font-weight: bold; color: #fff; }
-  .zap-overlay .zap-group { font-size: 12px; color: #8b949e; margin-top: 2px; }
-  .zap-overlay .zap-epg { font-size: 13px; color: #c9d1d9; margin-top: 6px; }
-
-  /* ---------- CONTROL BAR ---------- */
   .control-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 30px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.95));
     display: flex;
-    gap: 10px;
-    padding: 12px 20px;
-    background: #161b22;
-    border-top: 1px solid #30363d;
-    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
-    flex-shrink: 0;
-    z-index: 10;
+    z-index: 15;
+    opacity: 1;
+    transition: opacity 0.3s;
   }
+  .control-bar.hidden { opacity: 0; pointer-events: none; }
 
   .control-bar button {
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid #30363d;
-    background: #21262d;
-    color: #e6edf3;
+    background: rgba(30, 30, 30, 0.9);
+    border: 2px solid #30363d;
+    color: #fff;
+    padding: 14px 22px;
+    border-radius: 10px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 18px;
+    font-weight: bold;
     transition: 0.2s;
     white-space: nowrap;
+    min-height: 55px;
   }
   .control-bar button:hover,
-  .control-bar button:focus { background: #30363d; border-color: #58a6ff; outline: none; }
-  .control-bar button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-  .control-bar button.primary:hover { background: #388bfd; }
-  .control-bar button.active { background: #d29922; border-color: #d29922; color: #fff; }
-
-  .control-bar .info {
+  .control-bar button:focus {
+    background: #1f6feb;
+    border-color: #58a6ff;
+    outline: none;
+    transform: scale(1.05);
+  }
+  .control-bar button.active {
+    background: #d29922;
+    border-color: #d29922;
+  }
+  .control-bar .title {
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
     margin-left: auto;
-    color: #8b949e;
-    font-size: 12px;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* ---------- SENDERLISTE OVERLAY ---------- */
   .channels-overlay {
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
-    width: 380px;
+    width: 420px;
     max-width: 90vw;
-    background: rgba(13, 17, 23, 0.5);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border-left: 1px solid rgba(48, 54, 61, 0.6);
+    background: rgba(15, 20, 28, 0.96);
+    border-left: 2px solid #30363d;
     display: flex;
     flex-direction: column;
     transform: translateX(100%);
     transition: transform 0.3s ease;
     z-index: 30;
   }
-
   .channels-overlay.open { transform: translateX(0); }
 
   .channels-header {
+    padding: 18px 22px;
+    border-bottom: 2px solid #30363d;
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(48, 54, 61, 0.6);
-    flex-shrink: 0;
-    background: rgba(22, 27, 34, 0.6);
+    align-items: center;
   }
-
   .channels-header h3 {
-    font-size: 12px;
-    text-transform: uppercase;
-    color: #c9d1d9;
+    font-size: 18px;
+    color: #58a6ff;
     letter-spacing: 1px;
   }
-
   .channels-header .close-btn {
-    background: rgba(48, 54, 61, 0.7);
+    background: #30363d;
     border: none;
-    color: #e6edf3;
-    width: 30px; height: 30px;
-    border-radius: 6px;
+    color: #fff;
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+    font-size: 22px;
     cursor: pointer;
-    font-size: 16px;
-    transition: 0.2s;
   }
   .channels-header .close-btn:hover { background: #da3633; }
 
   .channels-list {
     flex: 1;
     overflow-y: auto;
-    overflow-x: hidden;
     padding: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: #58a6ff rgba(0,0,0,0.2);
   }
-
   .channels-list::-webkit-scrollbar { width: 8px; }
-  .channels-list::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
   .channels-list::-webkit-scrollbar-thumb { background: #58a6ff; border-radius: 4px; }
-  .channels-list::-webkit-scrollbar-thumb:hover { background: #79b8ff; }
 
   .channel-card {
     display: flex;
-    gap: 12px;
-    padding: 10px;
+    gap: 14px;
+    padding: 12px;
     border-radius: 8px;
     cursor: pointer;
-    transition: 0.15s;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     align-items: center;
-    background: rgba(22, 27, 34, 0.4);
-    border: 1px solid transparent;
+    background: rgba(30, 30, 30, 0.6);
+    border: 2px solid transparent;
+    transition: 0.15s;
   }
-
   .channel-card:hover,
   .channel-card:focus {
-    background: rgba(48, 54, 61, 0.7);
-    border-color: #58a6ff44;
+    background: #1f6feb;
+    border-color: #58a6ff;
     outline: none;
   }
-
   .channel-card.active {
-    background: rgba(31, 111, 235, 0.35);
+    background: rgba(31, 111, 235, 0.5);
     border-color: #1f6feb;
   }
 
   .channel-logo {
-    width: 42px; height: 42px;
-    background: rgba(33, 38, 45, 0.8);
+    width: 55px;
+    height: 55px;
+    background: #21262d;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
     color: #58a6ff;
-    font-size: 13px;
+    font-size: 16px;
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -304,215 +214,176 @@
 
   .channel-info { flex: 1; overflow: hidden; }
   .channel-info .name {
-    font-size: 13px; color: #e6edf3;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 16px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: bold;
   }
   .channel-info .program {
-    font-size: 11px; color: #8b949e;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-top: 2px;
+    font-size: 13px;
+    color: #8b949e;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .live-dot {
-    width: 7px; height: 7px;
-    background: #da3633; border-radius: 50%;
-    flex-shrink: 0;
-    animation: blink 1.5s infinite;
+  #loading-screen {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    color: #58a6ff;
   }
-  @keyframes blink { 50% { opacity: 0.4; } }
+  #loading-screen.hidden { display: none; }
+  #loading-screen .spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #30363d;
+    border-top-color: #58a6ff;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin-bottom: 20px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-screen p { font-size: 18px; }
 
-  .empty-msg {
-    color: #8b949e; font-size: 13px; padding: 20px; text-align: center;
+  #start-screen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #0d1117, #1f2937);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    text-align: center;
+    padding: 40px;
   }
-
-  /* ---------- MODAL ---------- */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.75); z-index: 1000;
-    align-items: center; justify-content: center;
+  #start-screen.hidden { display: none; }
+  #start-screen h1 {
+    font-size: 42px;
+    color: #58a6ff;
+    margin-bottom: 20px;
   }
-  .modal-overlay.show { display: flex; }
-
-  .modal {
-    background: #161b22; border: 1px solid #30363d;
-    border-radius: 12px; padding: 25px;
-    max-width: 520px; width: 90%;
+  #start-screen p {
+    font-size: 18px;
+    color: #8b949e;
+    margin-bottom: 40px;
+    max-width: 600px;
+    line-height: 1.6;
   }
-  .modal h3 { margin-bottom: 15px; color: #58a6ff; font-size: 17px; }
-  .modal p.hint {
-    font-size: 12px; color: #8b949e; margin-bottom: 12px; line-height: 1.5;
+  #start-screen .start-btn {
+    background: #1f6feb;
+    color: #fff;
+    border: 3px solid #58a6ff;
+    padding: 22px 60px;
+    font-size: 24px;
+    font-weight: bold;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.2s;
   }
-  .modal input {
-    width: 100%; padding: 12px;
-    background: #0d1117; border: 1px solid #30363d;
-    border-radius: 8px; color: #e6edf3; font-size: 14px;
-    outline: none; margin-bottom: 15px;
-  }
-  .modal input:focus { border-color: #58a6ff; }
-
-  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-  .modal-actions button {
-    padding: 9px 18px; border-radius: 8px; border: 1px solid #30363d;
-    background: #21262d; color: #e6edf3; cursor: pointer; font-size: 13px;
-  }
-  .modal-actions button.primary {
-    background: #1f6feb; border-color: #1f6feb; color: #fff;
-  }
-
-  /* ---------- RESPONSIVE (TV / MOBILE) ---------- */
-  @media (max-width: 900px) {
-    .channel-logo-overlay { width: 120px; height: 120px; }
-    .channel-logo-overlay .fallback { font-size: 36px; }
-  }
-
-  @media (max-width: 700px) {
-    .search-bar { display: none; }
-    .channels-overlay { width: 100%; max-width: 100%; }
-    .logo { font-size: 16px; }
-    .user-actions button { padding: 7px 10px; font-size: 12px; }
-    .channel-logo-overlay { width: 100px; height: 100px; top: 15px; right: 15px; }
-    .channel-logo-overlay .fallback { font-size: 28px; }
-    .zap-overlay { padding: 10px 14px; max-width: calc(100% - 140px); }
-    .zap-overlay .zap-name { font-size: 15px; }
-  }
-
-  /* TV-Fernbedienung: Fokus deutlich sichtbar */
-  button:focus-visible, .channel-card:focus-visible {
-    outline: 3px solid #58a6ff;
-    outline-offset: 2px;
+  #start-screen .start-btn:hover,
+  #start-screen .start-btn:focus {
+    background: #388bfd;
+    transform: scale(1.08);
+    outline: none;
   }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">📺 IPTV<span>Player</span></div>
-  <div class="search-bar">
-    <input type="text" id="search-input" placeholder="Sender suchen...">
-  </div>
-  <div class="user-actions">
-    <button onclick="document.getElementById('m3u-file').click()">📂 M3U</button>
-    <input type="file" id="m3u-file" accept=".m3u,.m3u8,.txt" hidden>
-    <button onclick="openUrlModal()">🔗 URL</button>
-    <button onclick="toggleFullscreen()">⛶ Vollbild</button>
-    <button class="primary" onclick="loadDemo()">⚡ Demo</button>
-  </div>
-</header>
-
-<div class="main">
-
-  <!-- VIDEO -->
-  <div class="video-container ratio-16-9" id="video-container">
-    <video id="iptv-video" controls playsinline></video>
-    <div class="video-placeholder" id="placeholder">
-      <div class="play-icon">▶</div>
-      <p>Wähle einen Sender aus der Liste</p>
-    </div>
-
-    <!-- Sender-Name + EPG -->
-    <div class="zap-overlay" id="zap-overlay">
-      <div class="zap-name" id="zap-name">Sender</div>
-      <div class="zap-group" id="zap-group">Kategorie</div>
-      <div class="zap-epg" id="zap-epg">Aktuelle Sendung wird geladen...</div>
-    </div>
-
-    <!-- GROSSES SENDER-LOGO -->
-    <div class="channel-logo-overlay" id="channel-logo-overlay">
-      <img id="channel-logo-img" src="" alt="" style="display:none;">
-      <div class="fallback" id="channel-logo-fallback" style="display:none;">TV</div>
-    </div>
-  </div>
-
-  <!-- SENDERLISTE OVERLAY -->
-  <aside class="channels-overlay" id="channels-overlay">
-    <div class="channels-header">
-      <h3 id="channels-title">Sender (0)</h3>
-      <button class="close-btn" onclick="closeChannels()">✕</button>
-    </div>
-    <div class="channels-list" id="channels-list">
-      <div class="empty-msg">Lade eine M3U-Playlist...</div>
-    </div>
-  </aside>
-
-  <!-- STEUERLEISTE -->
-  <div class="control-bar">
-    <button class="primary" onclick="playCurrent()">▶ Abspielen</button>
-    <button id="fav-btn" onclick="toggleFavorite()">⭐ Favorit</button>
-    <button onclick="showFavorites()">❤️ Favoriten</button>
-    <button onclick="toggleChannels()">📋 Senderliste</button>
-    <button id="ratio-btn" onclick="cycleRatio()">🔲 16:9</button>
-    <button onclick="copyStreamUrl()">🔗 Stream-URL</button>
-    <span class="info" id="status-info">0 Sender geladen</span>
-  </div>
-
+<div id="start-screen">
+  <h1>📺 IPTV Player</h1>
+  <p>Drücke <strong>OK</strong> auf der Fernbedienung, um den Player zu starten.</p>
+  <button class="start-btn" id="start-btn">▶ START</button>
 </div>
 
-<!-- URL MODAL -->
-<div class="modal-overlay" id="url-modal">
-  <div class="modal">
-    <h3>M3U Playlist von URL laden</h3>
-    <p class="hint">
-      Bei CORS-Fehlern wird automatisch ein Proxy versucht.<br>
-      Falls das auch scheitert, lade die Datei lokal per „📂 M3U" hoch.
-    </p>
-    <input type="text" id="url-input" placeholder="https://beispiel.de/playlist.m3u">
-    <div class="modal-actions">
-      <button onclick="closeUrlModal()">Abbrechen</button>
-      <button class="primary" onclick="loadFromUrl()">Laden</button>
-    </div>
+<div id="loading-screen" class="hidden">
+  <div class="spinner"></div>
+  <p id="loading-text">Lade Playlist...</p>
+</div>
+
+<video id="iptv-video" playsinline autoplay></video>
+
+<div class="zap-overlay" id="zap-overlay">
+  <div class="zap-name" id="zap-name"></div>
+  <div class="zap-group" id="zap-group"></div>
+  <div class="zap-epg" id="zap-epg"></div>
+</div>
+
+<div class="logo-overlay" id="logo-overlay">
+  <img id="logo-img" src="" alt="" style="display:none;">
+  <div class="fallback" id="logo-fallback" style="display:none;"></div>
+</div>
+
+<aside class="channels-overlay" id="channels-overlay">
+  <div class="channels-header">
+    <h3 id="channels-title">Sender</h3>
+    <button class="close-btn" onclick="closeChannels()">✕</button>
   </div>
+  <div class="channels-list" id="channels-list"></div>
+</aside>
+
+<div class="control-bar" id="control-bar">
+  <button onclick="openChannels()">📋 Senderliste</button>
+  <button onclick="prevChannel()">⏮ Zurück</button>
+  <button onclick="nextChannel()">⏭ Weiter</button>
+  <button id="fav-btn" onclick="toggleFavorite()">⭐ Favorit</button>
+  <button id="ratio-btn" onclick="cycleRatio()">🔲 16:9</button>
+  <button onclick="toggleFullscreen()">⛶ Vollbild</button>
+  <span class="title" id="status-title"></span>
 </div>
 
 <script>
 // ============================================================
-// STATE
+// HIER IHRE EIGENE M3U PLAYLIST EINFÜGEN
 // ============================================================
+const M3U_PLAYLIST = `https://files.catbox.moe/oslbyl.m3u
+`;
+// ============================================================
+
 let allChannels = [];
 let currentChannel = null;
+let currentIndex = -1;
 let hls = null;
 let favorites = JSON.parse(localStorage.getItem('iptv_favorites') || '[]');
-let showFavsOnly = false;
 let zapTimer = null;
-let logoOverlayTimer = null;
-let filteredChannels = [];
+let logoTimer = null;
+let barTimer = null;
 let currentRatio = 0;
 
 const RATIOS = [
-  { key: 'ratio-16-9', label: '🔲 16:9' },
-  { key: 'ratio-4-3',  label: '📺 4:3'  },
+  { key: '', label: '🔲 16:9' },
+  { key: 'ratio-4-3', label: '📺 4:3' },
   { key: 'ratio-zoom', label: '🔍 Zoom' },
   { key: 'ratio-fill', label: '🖼 Fill' }
 ];
 
 const video = document.getElementById('iptv-video');
-const placeholder = document.getElementById('placeholder');
-const channelsList = document.getElementById('channels-list');
-const channelsOverlay = document.getElementById('channels-overlay');
-const videoContainer = document.getElementById('video-container');
 
-// ============================================================
-// M3U PARSER
-// ============================================================
 function parseM3U(text) {
   const lines = text.split('\n');
   const channels = [];
   let current = null;
-
   for (let raw of lines) {
     const line = raw.trim();
     if (!line) continue;
-
     if (line.startsWith('#EXTINF:')) {
       const info = line.substring(8);
       const commaIdx = info.lastIndexOf(',');
       const attrs = commaIdx > -1 ? info.substring(0, commaIdx) : info;
       const name = commaIdx > -1 ? info.substring(commaIdx + 1).trim() : 'Unbekannt';
-
       const logo = (attrs.match(/tvg-logo="([^"]*)"/) || [])[1] || '';
-      const group = (attrs.match(/group-title="([^"]*)"/) || [])[1] || 'Unkategorisiert';
-      const tvgId = (attrs.match(/tvg-id="([^"]*)"/) || [])[1] || '';
-
-      current = { name: name || 'Unbenannt', logo, group, tvgId, url: '' };
+      const group = (attrs.match(/group-title="([^"]*)"/) || [])[1] || 'Andere';
+      current = { name: name || 'Unbenannt', logo, group, url: '' };
     } else if (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp')) {
       if (current) {
         current.url = line;
@@ -524,166 +395,148 @@ function parseM3U(text) {
   return channels;
 }
 
-// ============================================================
-// STREAM PLAYER
-// ============================================================
 function playStream(url) {
   if (!url) return;
-
   if (hls) { hls.destroy(); hls = null; }
   video.removeAttribute('src');
   video.load();
 
-  const isHls = url.includes('.m3u8') || url.includes('m3u8');
+  const isHls = url.includes('.m3u8');
 
   if (isHls && window.Hls && Hls.isSupported()) {
-    hls = new Hls({ enableWorker: true, lowLatencyMode: false });
+    hls = new Hls({ enableWorker: true });
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      video.play().catch(e => console.log('Autoplay blockiert:', e));
+      video.play().catch(e => {
+        console.warn('Autoplay blockiert:', e);
+        showZapMessage('▶ Bitte Play drücken');
+      });
     });
     hls.on(Hls.Events.ERROR, (event, data) => {
       if (data.fatal) {
         console.error('HLS Fehler:', data);
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else { hls.destroy(); hls = null; }
+        else {
+          showZapMessage('⚠ Stream nicht verfügbar');
+          hls.destroy(); hls = null;
+          setTimeout(() => nextChannel(), 2000);
+        }
       }
     });
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
-    video.play().catch(e => console.log(e));
   } else {
     video.src = url;
-    video.play().catch(e => console.log(e));
+    video.play().catch(e => console.warn(e));
+    video.onerror = () => {
+      showZapMessage('⚠ Stream nicht verfügbar');
+      setTimeout(() => nextChannel(), 2000);
+    };
   }
 }
 
-function playCurrent() {
-  if (currentChannel) playStream(currentChannel.url);
+function selectChannel(ch, idx) {
+  if (!ch) return;
+  currentChannel = ch;
+  currentIndex = idx !== undefined ? idx : allChannels.indexOf(ch);
+
+  showZapOverlay(ch);
+  showLogoOverlay(ch);
+  playStream(ch.url);
+
+  document.getElementById('fav-btn').classList.toggle('active',
+    favorites.includes(ch.url));
+  document.getElementById('status-title').textContent = ch.name;
+
+  document.querySelectorAll('.channel-card').forEach((c, i) => {
+    c.classList.toggle('active', i === currentIndex);
+  });
+
+  closeChannels();
 }
 
-// ============================================================
-// SEITENVERHÄLTNIS
-// ============================================================
-function cycleRatio() {
-  currentRatio = (currentRatio + 1) % RATIOS.length;
-  const r = RATIOS[currentRatio];
-
-  videoContainer.className = 'video-container ' + r.key;
-  document.getElementById('ratio-btn').textContent = r.label;
-
-  localStorage.setItem('iptv_ratio', r.key);
-  showZapMessage('Seitenverhältnis: ' + r.label.replace(/[🔲📺🔍🖼] /, ''));
+function nextChannel() {
+  if (allChannels.length === 0) return;
+  const next = (currentIndex + 1) % allChannels.length;
+  selectChannel(allChannels[next], next);
 }
 
-// Ratio beim Start wiederherstellen
-window.addEventListener('DOMContentLoaded', () => {
-  const savedRatio = localStorage.getItem('iptv_ratio');
-  if (savedRatio) {
-    const idx = RATIOS.findIndex(r => r.key === savedRatio);
-    if (idx > -1) {
-      currentRatio = idx - 1; // -1 damit cycleRatio auf idx landet
-      cycleRatio();
-    }
-  }
-});
+function prevChannel() {
+  if (allChannels.length === 0) return;
+  const prev = (currentIndex - 1 + allChannels.length) % allChannels.length;
+  selectChannel(allChannels[prev], prev);
+}
 
-// ============================================================
-// ZAPPING-OVERLAY + LOGO-OVERLAY
-// ============================================================
-function showZapOverlay(channel) {
-  const overlay = document.getElementById('zap-overlay');
-  document.getElementById('zap-name').textContent = channel.name;
-  document.getElementById('zap-group').textContent = channel.group;
-  document.getElementById('zap-epg').textContent =
-    'Jetzt: ' + (channel.epg || 'Keine Programminfo verfügbar');
-
-  overlay.classList.add('show');
+function showZapOverlay(ch) {
+  document.getElementById('zap-name').textContent = ch.name;
+  document.getElementById('zap-group').textContent = ch.group;
+  document.getElementById('zap-epg').textContent = 'Jetzt: Live-Programm';
+  const el = document.getElementById('zap-overlay');
+  el.classList.add('show');
   clearTimeout(zapTimer);
-  zapTimer = setTimeout(() => overlay.classList.remove('show'), 5000);
+  zapTimer = setTimeout(() => el.classList.remove('show'), 5000);
 }
 
-function showLogoOverlay(channel) {
-  const overlay = document.getElementById('channel-logo-overlay');
-  const img = document.getElementById('channel-logo-img');
-  const fallback = document.getElementById('channel-logo-fallback');
+function showLogoOverlay(ch) {
+  const overlay = document.getElementById('logo-overlay');
+  const img = document.getElementById('logo-img');
+  const fb = document.getElementById('logo-fallback');
 
-  if (channel.logo) {
-    img.src = channel.logo;
+  if (ch.logo) {
+    img.src = ch.logo;
     img.style.display = 'block';
-    fallback.style.display = 'none';
+    fb.style.display = 'none';
     img.onerror = () => {
       img.style.display = 'none';
-      fallback.textContent = channel.name.substring(0, 3).toUpperCase();
-      fallback.style.display = 'block';
+      fb.textContent = ch.name.substring(0, 3).toUpperCase();
+      fb.style.display = 'block';
     };
   } else {
     img.style.display = 'none';
-    fallback.textContent = channel.name.substring(0, 3).toUpperCase();
-    fallback.style.display = 'block';
+    fb.textContent = ch.name.substring(0, 3).toUpperCase();
+    fb.style.display = 'block';
   }
-
   overlay.classList.add('show');
-  clearTimeout(logoOverlayTimer);
-  logoOverlayTimer = setTimeout(() => overlay.classList.remove('show'), 5000);
+  clearTimeout(logoTimer);
+  logoTimer = setTimeout(() => overlay.classList.remove('show'), 5000);
 }
 
-// Kurze Nachricht im Zap-Overlay
 function showZapMessage(msg) {
-  const overlay = document.getElementById('zap-overlay');
   document.getElementById('zap-name').textContent = msg;
   document.getElementById('zap-group').textContent = '';
   document.getElementById('zap-epg').textContent = '';
-
-  overlay.classList.add('show');
+  const el = document.getElementById('zap-overlay');
+  el.classList.add('show');
   clearTimeout(zapTimer);
-  zapTimer = setTimeout(() => overlay.classList.remove('show'), 3000);
+  zapTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-// ============================================================
-// SENDERLISTE RENDERN
-// ============================================================
-function renderChannels(channels) {
-  filteredChannels = channels;
-  document.getElementById('channels-title').textContent = 'Sender (' + channels.length + ')';
+function renderChannels() {
+  const list = document.getElementById('channels-list');
+  list.innerHTML = '';
+  document.getElementById('channels-title').textContent = 'Sender (' + allChannels.length + ')';
 
-  if (channels.length === 0) {
-    channelsList.innerHTML = '<div class="empty-msg">Keine Sender gefunden.</div>';
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-
-  channels.forEach(ch => {
+  allChannels.forEach((ch, i) => {
     const card = document.createElement('div');
-    card.className = 'channel-card' + (currentChannel?.url === ch.url ? ' active' : '');
+    card.className = 'channel-card';
     card.tabIndex = 0;
-
     const initials = ch.name.substring(0, 2).toUpperCase();
     const logoHtml = ch.logo
       ? `<img src="${ch.logo}" alt="" onerror="this.parentElement.textContent='${initials}'">`
       : initials;
-
     card.innerHTML = `
       <div class="channel-logo">${logoHtml}</div>
       <div class="channel-info">
         <div class="name">${escapeHtml(ch.name)}</div>
         <div class="program">${escapeHtml(ch.group)}</div>
       </div>
-      <div class="live-dot"></div>
     `;
-
-    card.addEventListener('click', () => selectChannel(ch, card));
+    card.addEventListener('click', () => selectChannel(ch, i));
     card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') selectChannel(ch, card);
+      if (e.key === 'Enter') selectChannel(ch, i);
     });
-    frag.appendChild(card);
+    list.appendChild(card);
   });
-
-  channelsList.innerHTML = '';
-  channelsList.appendChild(frag);
 }
 
 function escapeHtml(s) {
@@ -692,237 +545,91 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// ============================================================
-// SENDER AUSWÄHLEN
-// ============================================================
-function selectChannel(ch, cardEl) {
-  currentChannel = ch;
-
-  document.querySelectorAll('.channel-card').forEach(c => c.classList.remove('active'));
-  if (cardEl) cardEl.classList.add('active');
-
-  const favBtn = document.getElementById('fav-btn');
-  favBtn.classList.toggle('active', favorites.includes(ch.url));
-
-  showZapOverlay(ch);
-  showLogoOverlay(ch);
-  playStream(ch.url);
-
-  if (window.innerWidth < 700) closeChannels();
-}
-
-// ============================================================
-// SENDERLISTE ÖFFNEN / SCHLIESSEN
-// ============================================================
 function openChannels() {
-  channelsOverlay.classList.add('open');
-  history.pushState({ channelsOpen: true }, '');
+  document.getElementById('channels-overlay').classList.add('open');
 }
+
 function closeChannels() {
-  channelsOverlay.classList.remove('open');
-}
-function toggleChannels() {
-  if (channelsOverlay.classList.contains('open')) closeChannels();
-  else openChannels();
+  document.getElementById('channels-overlay').classList.remove('open');
 }
 
-window.addEventListener('popstate', () => {
-  if (channelsOverlay.classList.contains('open')) closeChannels();
-});
-
-// ============================================================
-// KEYBOARD (TV-Fernbedienung)
-// ============================================================
-document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
-
-  switch (e.key) {
-    case 'Escape':
-      if (channelsOverlay.classList.contains('open')) closeChannels();
-      break;
-    case 'f': case 'F':
-      toggleFullscreen();
-      break;
-    case 'c': case 'C':
-      toggleChannels();
-      break;
-    case 'a': case 'A':
-      cycleRatio();
-      break;
-  }
-});
-
-// ============================================================
-// FILTER
-// ============================================================
-function applyFilter() {
-  let list = allChannels;
-  if (showFavsOnly) list = list.filter(c => favorites.includes(c.url));
-
-  const q = document.getElementById('search-input').value.toLowerCase().trim();
-  if (q) {
-    list = list.filter(c =>
-      c.name.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
-    );
-  }
-
-  renderChannels(list);
-  document.getElementById('status-info').textContent = list.length + ' Sender';
-}
-
-document.getElementById('search-input').addEventListener('input', applyFilter);
-
-// ============================================================
-// PLAYLIST LADEN
-// ============================================================
-async function fetchPlaylist(url) {
-  try {
-    const res = await fetch(url, { mode: 'cors' });
-    if (res.ok) return await res.text();
-  } catch (e) { console.warn('Direkter Fetch fehlgeschlagen:', e.message); }
-
-  try {
-    const proxy = 'https://corsproxy.io/?' + encodeURIComponent(url);
-    const res = await fetch(proxy);
-    if (res.ok) return await res.text();
-  } catch (e) { console.warn('Proxy 1 fehlgeschlagen:', e.message); }
-
-  try {
-    const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-    const res = await fetch(proxy);
-    if (res.ok) return await res.text();
-  } catch (e) { console.warn('Proxy 2 fehlgeschlagen:', e.message); }
-
-  throw new Error('Alle Ladeversuche fehlgeschlagen (CORS)');
-}
-
-async function loadM3UFromUrl(url) {
-  const status = document.getElementById('status-info');
-  status.textContent = '⏳ Lade Playlist...';
-
-  try {
-    const text = await fetchPlaylist(url);
-    loadPlaylist(text);
-  } catch (err) {
-    console.error(err);
-    status.textContent = '❌ Fehler';
-    alert(
-      'Playlist konnte nicht geladen werden.\n\n' +
-      'Grund: ' + err.message + '\n\n' +
-      'Tipp: Lade die M3U-Datei per „📂 M3U" lokal hoch.'
-    );
-  }
-}
-
-function loadPlaylist(text) {
-  allChannels = parseM3U(text);
-  console.log('✅ ' + allChannels.length + ' Sender geladen');
-
-  if (allChannels.length === 0) {
-    alert('Keine Sender in der Playlist gefunden. Ist das Format korrekt?');
-    return;
-  }
-
-  applyFilter();
-  openChannels();
-}
-
-document.getElementById('m3u-file').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => loadPlaylist(ev.target.result);
-  reader.readAsText(file);
-});
-
-function openUrlModal() {
-  document.getElementById('url-modal').classList.add('show');
-  document.getElementById('url-input').focus();
-}
-function closeUrlModal() {
-  document.getElementById('url-modal').classList.remove('show');
-}
-function loadFromUrl() {
-  const url = document.getElementById('url-input').value.trim();
-  if (!url) return;
-  closeUrlModal();
-  loadM3UFromUrl(url);
-}
-document.getElementById('url-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') loadFromUrl();
-});
-
-// ============================================================
-// FAVORITEN
-// ============================================================
 function toggleFavorite() {
   if (!currentChannel) return;
   const url = currentChannel.url;
   const idx = favorites.indexOf(url);
-
   if (idx > -1) favorites.splice(idx, 1);
   else favorites.push(url);
-
   localStorage.setItem('iptv_favorites', JSON.stringify(favorites));
   document.getElementById('fav-btn').classList.toggle('active', favorites.includes(url));
+  showZapMessage(favorites.includes(url) ? '⭐ Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt');
 }
 
-function showFavorites() {
-  showFavsOnly = !showFavsOnly;
-  applyFilter();
-  if (showFavsOnly && !channelsOverlay.classList.contains('open')) openChannels();
+function cycleRatio() {
+  currentRatio = (currentRatio + 1) % RATIOS.length;
+  const r = RATIOS[currentRatio];
+  video.className = r.key;
+  document.getElementById('ratio-btn').textContent = r.label;
+  showZapMessage('Seitenverhältnis: ' + r.label.replace(/[🔲📺🔍🖼] /, ''));
 }
 
-// ============================================================
-// FULLSCREEN
-// ============================================================
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(e => console.log(e));
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (fn) fn.call(el).catch(() => {});
   } else {
-    document.exitFullscreen();
+    const fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (fn) fn.call(document);
   }
 }
 
-// ============================================================
-// UTIL
-// ============================================================
-function copyStreamUrl() {
-  if (!currentChannel) return alert('Kein Sender ausgewählt.');
-  navigator.clipboard.writeText(currentChannel.url)
-    .then(() => alert('Stream-URL kopiert!'))
-    .catch(() => prompt('Stream-URL:', currentChannel.url));
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowRight': nextChannel(); break;
+    case 'ArrowLeft':  prevChannel(); break;
+    case 'Escape':     closeChannels(); break;
+    case 'f': case 'F': toggleFullscreen(); break;
+    case 'a': case 'A': cycleRatio(); break;
+    case 'c': case 'C': openChannels(); break;
+  }
+});
+
+document.addEventListener('mousemove', () => {
+  const bar = document.getElementById('control-bar');
+  bar.classList.remove('hidden');
+  clearTimeout(barTimer);
+  barTimer = setTimeout(() => bar.classList.add('hidden'), 5000);
+});
+
+document.getElementById('start-btn').addEventListener('click', startPlayer);
+
+function startPlayer() {
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (fn) fn.call(el).catch(() => {});
+
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('loading-screen').classList.remove('hidden');
+  document.getElementById('loading-text').textContent = 'Lade Playlist...';
+
+  setTimeout(() => {
+    allChannels = parseM3U(M3U_PLAYLIST);
+    console.log('✅ ' + allChannels.length + ' Sender geladen');
+
+    if (allChannels.length === 0) {
+      document.getElementById('loading-text').textContent = '❌ Keine Sender gefunden';
+      return;
+    }
+
+    renderChannels();
+    document.getElementById('loading-screen').classList.add('hidden');
+    selectChannel(allChannels[0], 0);
+
+    barTimer = setTimeout(() => {
+      document.getElementById('control-bar').classList.add('hidden');
+    }, 5000);
+  }, 500);
 }
-
-// ============================================================
-// DEMO-PLAYLIST
-// ============================================================
-function loadDemo() {
-  const demo = `#EXTM3U
-#EXTINF:-1 tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/ARD_logo.svg/200px-ARD_logo.svg.png" group-title="Deutschland",ARD Tagesschau
-https://tagesschau.akamaized.net/hls/live/2017386/tagesschau-inline/master.m3u8
-#EXTINF:-1 tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/ZDF_logo.svg/200px-ZDF_logo.svg.png" group-title="Deutschland",ZDF Live
-https://zdf-hls-15.akamaized.net/hls/live/2016498/de/high/master.m3u8
-#EXTINF:-1 tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Big_Buck_Bunny_Logo.png/200px-Big_Buck_Bunny_Logo.png" group-title="Test",Big Buck Bunny (HLS)
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Test",Apple HLS Beispiel
-https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
-#EXTINF:-1 group-title="Filme",Sintel
-https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
-#EXTINF:-1 group-title="Filme",Tears of Steel
-https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
-#EXTINF:-1 group-title="Filme",Elephants Dream
-https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
-`;
-  loadPlaylist(demo);
-}
-
-// Platzhalter ausblenden wenn Video läuft
-video.addEventListener('playing', () => placeholder.style.display = 'none');
-video.addEventListener('pause', () => { if (!video.currentTime) placeholder.style.display = 'block'; });
-
-console.log('📺 IPTV Player bereit. Shortcuts: F=Vollbild, C=Senderliste, A=Seitenverhältnis, ESC=Zurück');
 </script>
-
 </body>
 </html>
