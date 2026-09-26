@@ -252,7 +252,7 @@
     margin-bottom: 20px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #loading-screen p { font-size: 18px; }
+  #loading-screen p { font-size: 18px; text-align: center; padding: 0 30px; line-height: 1.6; }
 
   #start-screen {
     position: absolute;
@@ -296,14 +296,28 @@
     transform: scale(1.08);
     outline: none;
   }
+  #start-screen .error {
+    margin-top: 25px;
+    color: #ff7b72;
+    font-size: 14px;
+    max-width: 600px;
+    word-break: break-word;
+    background: rgba(255, 123, 114, 0.1);
+    border: 1px solid rgba(255, 123, 114, 0.4);
+    padding: 15px;
+    border-radius: 8px;
+    display: none;
+  }
+  #start-screen .error.show { display: block; }
 </style>
 </head>
 <body>
 
 <div id="start-screen">
   <h1>📺 IPTV Player</h1>
-  <p>Drücke <strong>OK</strong> auf der Fernbedienung, um den Player zu starten.</p>
-  <button class="start-btn" id="start-btn">▶ START</button>
+  <p>Drücke <strong>OK</strong> oder klicke auf START, um den Player zu starten.</p>
+  <button class="start-btn" id="start-btn" type="button">▶ START</button>
+  <div class="error" id="error-box"></div>
 </div>
 
 <div id="loading-screen" class="hidden">
@@ -327,62 +341,73 @@
 <aside class="channels-overlay" id="channels-overlay">
   <div class="channels-header">
     <h3 id="channels-title">Sender</h3>
-    <button class="close-btn" onclick="closeChannels()">✕</button>
+    <button class="close-btn" type="button" onclick="closeChannels()">✕</button>
   </div>
   <div class="channels-list" id="channels-list"></div>
 </aside>
 
 <div class="control-bar" id="control-bar">
-  <button onclick="openChannels()">📋 Senderliste</button>
-  <button onclick="prevChannel()">⏮ Zurück</button>
-  <button onclick="nextChannel()">⏭ Weiter</button>
-  <button id="fav-btn" onclick="toggleFavorite()">⭐ Favorit</button>
-  <button id="ratio-btn" onclick="cycleRatio()">🔲 16:9</button>
-  <button onclick="toggleFullscreen()">⛶ Vollbild</button>
+  <button type="button" onclick="openChannels()">📋 Senderliste</button>
+  <button type="button" onclick="prevChannel()">⏮ Zurück</button>
+  <button type="button" onclick="nextChannel()">⏭ Weiter</button>
+  <button type="button" id="fav-btn" onclick="toggleFavorite()">⭐ Favorit</button>
+  <button type="button" id="ratio-btn" onclick="cycleRatio()">🔲 16:9</button>
+  <button type="button" onclick="toggleFullscreen()">⛶ Vollbild</button>
   <span class="title" id="status-title"></span>
 </div>
 
 <script>
 // ============================================================
-// URL ZUR M3U PLAYLIST
+// M3U PLAYLIST URL
 // ============================================================
 const M3U_URL = 'https://files.catbox.moe/oslbyl.m3u';
+
 // ============================================================
+// STATE
+// ============================================================
+var allChannels = [];
+var currentChannel = null;
+var currentIndex = -1;
+var hls = null;
+var favorites = [];
+try { favorites = JSON.parse(localStorage.getItem('iptv_favorites') || '[]'); } catch(e) {}
+var zapTimer = null;
+var logoTimer = null;
+var barTimer = null;
+var currentRatio = 0;
 
-let allChannels = [];
-let currentChannel = null;
-let currentIndex = -1;
-let hls = null;
-let favorites = JSON.parse(localStorage.getItem('iptv_favorites') || '[]');
-let zapTimer = null;
-let logoTimer = null;
-let barTimer = null;
-let currentRatio = 0;
-
-const RATIOS = [
+var RATIOS = [
   { key: '', label: '🔲 16:9' },
   { key: 'ratio-4-3', label: '📺 4:3' },
   { key: 'ratio-zoom', label: '🔍 Zoom' },
   { key: 'ratio-fill', label: '🖼 Fill' }
 ];
 
-const video = document.getElementById('iptv-video');
+var video = document.getElementById('iptv-video');
 
+// ============================================================
+// M3U PARSER
+// ============================================================
 function parseM3U(text) {
-  const lines = text.split('\n');
-  const channels = [];
-  let current = null;
-  for (let raw of lines) {
-    const line = raw.trim();
+  var lines = text.split('\n');
+  var channels = [];
+  var current = null;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
     if (!line) continue;
     if (line.startsWith('#EXTINF:')) {
-      const info = line.substring(8);
-      const commaIdx = info.lastIndexOf(',');
-      const attrs = commaIdx > -1 ? info.substring(0, commaIdx) : info;
-      const name = commaIdx > -1 ? info.substring(commaIdx + 1).trim() : 'Unbekannt';
-      const logo = (attrs.match(/tvg-logo="([^"]*)"/) || [])[1] || '';
-      const group = (attrs.match(/group-title="([^"]*)"/) || [])[1] || 'Andere';
-      current = { name: name || 'Unbenannt', logo, group, url: '' };
+      var info = line.substring(8);
+      var commaIdx = info.lastIndexOf(',');
+      var attrs = commaIdx > -1 ? info.substring(0, commaIdx) : info;
+      var name = commaIdx > -1 ? info.substring(commaIdx + 1).trim() : 'Unbekannt';
+      var logoMatch = attrs.match(/tvg-logo="([^"]*)"/);
+      var groupMatch = attrs.match(/group-title="([^"]*)"/);
+      current = {
+        name: name || 'Unbenannt',
+        logo: logoMatch ? logoMatch[1] : '',
+        group: groupMatch ? groupMatch[1] : 'Andere',
+        url: ''
+      };
     } else if (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp')) {
       if (current) {
         current.url = line;
@@ -394,98 +419,111 @@ function parseM3U(text) {
   return channels;
 }
 
+// ============================================================
+// STREAM PLAYER
+// ============================================================
 function playStream(url) {
   if (!url) return;
-  if (hls) { hls.destroy(); hls = null; }
+  if (hls) { try { hls.destroy(); } catch(e) {} hls = null; }
   video.removeAttribute('src');
   video.load();
 
-  const isHls = url.includes('.m3u8');
+  var isHls = url.indexOf('.m3u8') > -1;
 
   if (isHls && window.Hls && Hls.isSupported()) {
     hls = new Hls({ enableWorker: true });
     hls.loadSource(url);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      video.play().catch(e => {
+    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+      video.play().catch(function(e) {
         console.warn('Autoplay blockiert:', e);
         showZapMessage('▶ Bitte Play drücken');
       });
     });
-    hls.on(Hls.Events.ERROR, (event, data) => {
+    hls.on(Hls.Events.ERROR, function(event, data) {
       if (data.fatal) {
         console.error('HLS Fehler:', data);
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else {
           showZapMessage('⚠ Stream nicht verfügbar');
-          hls.destroy(); hls = null;
-          setTimeout(() => nextChannel(), 2000);
+          try { hls.destroy(); } catch(e) {}
+          hls = null;
+          setTimeout(function() { nextChannel(); }, 2000);
         }
       }
     });
   } else {
     video.src = url;
-    video.play().catch(e => console.warn(e));
-    video.onerror = () => {
+    video.play().catch(function(e) { console.warn(e); });
+    video.onerror = function() {
       showZapMessage('⚠ Stream nicht verfügbar');
-      setTimeout(() => nextChannel(), 2000);
+      setTimeout(function() { nextChannel(); }, 2000);
     };
   }
 }
 
+// ============================================================
+// SENDER WÄHLEN
+// ============================================================
 function selectChannel(ch, idx) {
   if (!ch) return;
   currentChannel = ch;
-  currentIndex = idx !== undefined ? idx : allChannels.indexOf(ch);
+  currentIndex = (idx !== undefined) ? idx : allChannels.indexOf(ch);
 
   showZapOverlay(ch);
   showLogoOverlay(ch);
   playStream(ch.url);
 
-  document.getElementById('fav-btn').classList.toggle('active',
-    favorites.includes(ch.url));
-  document.getElementById('status-title').textContent = ch.name;
+  var favBtn = document.getElementById('fav-btn');
+  if (favBtn) favBtn.classList.toggle('active', favorites.indexOf(ch.url) > -1);
 
-  document.querySelectorAll('.channel-card').forEach((c, i) => {
-    c.classList.toggle('active', i === currentIndex);
-  });
+  var titleEl = document.getElementById('status-title');
+  if (titleEl) titleEl.textContent = ch.name;
+
+  var cards = document.querySelectorAll('.channel-card');
+  for (var i = 0; i < cards.length; i++) {
+    cards[i].classList.toggle('active', i === currentIndex);
+  }
 
   closeChannels();
 }
 
 function nextChannel() {
   if (allChannels.length === 0) return;
-  const next = (currentIndex + 1) % allChannels.length;
+  var next = (currentIndex + 1) % allChannels.length;
   selectChannel(allChannels[next], next);
 }
 
 function prevChannel() {
   if (allChannels.length === 0) return;
-  const prev = (currentIndex - 1 + allChannels.length) % allChannels.length;
+  var prev = (currentIndex - 1 + allChannels.length) % allChannels.length;
   selectChannel(allChannels[prev], prev);
 }
 
+// ============================================================
+// OVERLAYS
+// ============================================================
 function showZapOverlay(ch) {
   document.getElementById('zap-name').textContent = ch.name;
   document.getElementById('zap-group').textContent = ch.group;
   document.getElementById('zap-epg').textContent = 'Jetzt: Live-Programm';
-  const el = document.getElementById('zap-overlay');
+  var el = document.getElementById('zap-overlay');
   el.classList.add('show');
   clearTimeout(zapTimer);
-  zapTimer = setTimeout(() => el.classList.remove('show'), 5000);
+  zapTimer = setTimeout(function() { el.classList.remove('show'); }, 5000);
 }
 
 function showLogoOverlay(ch) {
-  const overlay = document.getElementById('logo-overlay');
-  const img = document.getElementById('logo-img');
-  const fb = document.getElementById('logo-fallback');
+  var overlay = document.getElementById('logo-overlay');
+  var img = document.getElementById('logo-img');
+  var fb = document.getElementById('logo-fallback');
 
   if (ch.logo) {
     img.src = ch.logo;
     img.style.display = 'block';
     fb.style.display = 'none';
-    img.onerror = () => {
+    img.onerror = function() {
       img.style.display = 'none';
       fb.textContent = ch.name.substring(0, 3).toUpperCase();
       fb.style.display = 'block';
@@ -497,92 +535,108 @@ function showLogoOverlay(ch) {
   }
   overlay.classList.add('show');
   clearTimeout(logoTimer);
-  logoTimer = setTimeout(() => overlay.classList.remove('show'), 5000);
+  logoTimer = setTimeout(function() { overlay.classList.remove('show'); }, 5000);
 }
 
 function showZapMessage(msg) {
   document.getElementById('zap-name').textContent = msg;
   document.getElementById('zap-group').textContent = '';
   document.getElementById('zap-epg').textContent = '';
-  const el = document.getElementById('zap-overlay');
+  var el = document.getElementById('zap-overlay');
   el.classList.add('show');
   clearTimeout(zapTimer);
-  zapTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  zapTimer = setTimeout(function() { el.classList.remove('show'); }, 3000);
 }
 
+// ============================================================
+// SENDERLISTE
+// ============================================================
 function renderChannels() {
-  const list = document.getElementById('channels-list');
+  var list = document.getElementById('channels-list');
   list.innerHTML = '';
   document.getElementById('channels-title').textContent = 'Sender (' + allChannels.length + ')';
 
-  allChannels.forEach((ch, i) => {
-    const card = document.createElement('div');
-    card.className = 'channel-card';
-    card.tabIndex = 0;
-    const initials = ch.name.substring(0, 2).toUpperCase();
-    const logoHtml = ch.logo
-      ? `<img src="${ch.logo}" alt="" onerror="this.parentElement.textContent='${initials}'">`
-      : initials;
-    card.innerHTML = `
-      <div class="channel-logo">${logoHtml}</div>
-      <div class="channel-info">
-        <div class="name">${escapeHtml(ch.name)}</div>
-        <div class="program">${escapeHtml(ch.group)}</div>
-      </div>
-    `;
-    card.addEventListener('click', () => selectChannel(ch, i));
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') selectChannel(ch, i);
-    });
-    list.appendChild(card);
-  });
+  for (var i = 0; i < allChannels.length; i++) {
+    (function(index) {
+      var ch = allChannels[index];
+      var card = document.createElement('div');
+      card.className = 'channel-card';
+      card.tabIndex = 0;
+      var initials = ch.name.substring(0, 2).toUpperCase();
+      var logoHtml = ch.logo
+        ? '<img src="' + ch.logo + '" alt="" onerror="this.parentElement.textContent=\'' + initials + '\'">'
+        : initials;
+      card.innerHTML =
+        '<div class="channel-logo">' + logoHtml + '</div>' +
+        '<div class="channel-info">' +
+          '<div class="name">' + escapeHtml(ch.name) + '</div>' +
+          '<div class="program">' + escapeHtml(ch.group) + '</div>' +
+        '</div>';
+      card.addEventListener('click', function() { selectChannel(ch, index); });
+      card.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') selectChannel(ch, index);
+      });
+      list.appendChild(card);
+    })(i);
+  }
 }
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
 }
 
 function openChannels() {
   document.getElementById('channels-overlay').classList.add('open');
 }
-
 function closeChannels() {
   document.getElementById('channels-overlay').classList.remove('open');
 }
 
+// ============================================================
+// FAVORITEN
+// ============================================================
 function toggleFavorite() {
   if (!currentChannel) return;
-  const url = currentChannel.url;
-  const idx = favorites.indexOf(url);
+  var url = currentChannel.url;
+  var idx = favorites.indexOf(url);
   if (idx > -1) favorites.splice(idx, 1);
   else favorites.push(url);
-  localStorage.setItem('iptv_favorites', JSON.stringify(favorites));
-  document.getElementById('fav-btn').classList.toggle('active', favorites.includes(url));
-  showZapMessage(favorites.includes(url) ? '⭐ Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt');
+  try { localStorage.setItem('iptv_favorites', JSON.stringify(favorites)); } catch(e) {}
+  document.getElementById('fav-btn').classList.toggle('active', favorites.indexOf(url) > -1);
+  showZapMessage(favorites.indexOf(url) > -1 ? '⭐ Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt');
 }
 
+// ============================================================
+// SEITENVERHÄLTNIS
+// ============================================================
 function cycleRatio() {
   currentRatio = (currentRatio + 1) % RATIOS.length;
-  const r = RATIOS[currentRatio];
+  var r = RATIOS[currentRatio];
   video.className = r.key;
   document.getElementById('ratio-btn').textContent = r.label;
   showZapMessage('Seitenverhältnis: ' + r.label.replace(/[🔲📺🔍🖼] /, ''));
 }
 
+// ============================================================
+// VOLLBILD
+// ============================================================
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
-    const el = document.documentElement;
-    const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-    if (fn) fn.call(el).catch(() => {});
+    var el = document.documentElement;
+    var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (fn) fn.call(el).catch(function() {});
   } else {
-    const fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-    if (fn) fn.call(document);
+    var fn2 = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (fn2) fn2.call(document);
   }
 }
 
-document.addEventListener('keydown', (e) => {
+// ============================================================
+// KEYBOARD
+// ============================================================
+document.addEventListener('keydown', function(e) {
   switch (e.key) {
     case 'ArrowRight': nextChannel(); break;
     case 'ArrowLeft':  prevChannel(); break;
@@ -593,50 +647,111 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-document.addEventListener('mousemove', () => {
-  const bar = document.getElementById('control-bar');
+document.addEventListener('mousemove', function() {
+  var bar = document.getElementById('control-bar');
   bar.classList.remove('hidden');
   clearTimeout(barTimer);
-  barTimer = setTimeout(() => bar.classList.add('hidden'), 5000);
+  barTimer = setTimeout(function() { bar.classList.add('hidden'); }, 5000);
 });
 
-document.getElementById('start-btn').addEventListener('click', startPlayer);
+// ============================================================
+// PLAYLIST LADEN (mit CORS-Fallback)
+// ============================================================
+function fetchPlaylist(url) {
+  return fetch(url, { mode: 'cors' })
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    })
+    .catch(function(err) {
+      console.warn('Direkter Fetch fehlgeschlagen:', err.message);
+      var proxy = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      return fetch(proxy).then(function(res) {
+        if (!res.ok) throw new Error('Proxy HTTP ' + res.status);
+        return res.text();
+      });
+    })
+    .catch(function(err) {
+      console.warn('Proxy 1 fehlgeschlagen:', err.message);
+      var proxy2 = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+      return fetch(proxy2).then(function(res) {
+        if (!res.ok) throw new Error('Proxy 2 HTTP ' + res.status);
+        return res.text();
+      });
+    });
+}
 
-async function startPlayer() {
-  const el = document.documentElement;
-  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-  if (fn) fn.call(el).catch(() => {});
+// ============================================================
+// START
+// ============================================================
+function showError(msg) {
+  var box = document.getElementById('error-box');
+  box.textContent = msg;
+  box.classList.add('show');
+  console.error(msg);
+}
+
+function startPlayer() {
+  console.log('▶ START geklickt');
+
+  // Fullscreen versuchen (nicht blockierend)
+  try {
+    var el = document.documentElement;
+    var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (fn) fn.call(el).catch(function(e) { console.log('Fullscreen nicht möglich:', e); });
+  } catch(e) { console.log('Fullscreen-Fehler:', e); }
 
   document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('error-box').classList.remove('show');
   document.getElementById('loading-screen').classList.remove('hidden');
   document.getElementById('loading-text').textContent = 'Lade Playlist...';
 
-  try {
-    const res = await fetch(M3U_URL);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    allChannels = parseM3U(text);
-    console.log('✅ ' + allChannels.length + ' Sender geladen');
+  console.log('Lade M3U von:', M3U_URL);
 
-    if (allChannels.length === 0) {
-      document.getElementById('loading-text').textContent = '❌ Playlist leer oder falsches Format';
-      return;
-    }
+  fetchPlaylist(M3U_URL)
+    .then(function(text) {
+      console.log('Playlist empfangen, Länge:', text.length);
+      allChannels = parseM3U(text);
+      console.log('✅ ' + allChannels.length + ' Sender geparst');
 
-    renderChannels();
-    document.getElementById('loading-screen').classList.add('hidden');
-    selectChannel(allChannels[0], 0);
+      if (allChannels.length === 0) {
+        throw new Error('Playlist enthält keine Sender. Prüfe das Format (muss mit #EXTM3U beginnen).');
+      }
 
-    barTimer = setTimeout(() => {
-      document.getElementById('control-bar').classList.add('hidden');
-    }, 5000);
-  } catch (err) {
-    console.error('Playlist-Fehler:', err);
-    document.getElementById('loading-text').innerHTML =
-      '❌ Playlist konnte nicht geladen werden.<br><br>' +
-      '<span style="font-size:14px;color:#8b949e">' + err.message + '</span>';
-  }
+      renderChannels();
+      document.getElementById('loading-screen').classList.add('hidden');
+      selectChannel(allChannels[0], 0);
+
+      barTimer = setTimeout(function() {
+        document.getElementById('control-bar').classList.add('hidden');
+      }, 5000);
+    })
+    .catch(function(err) {
+      console.error('Playlist-Fehler:', err);
+      document.getElementById('loading-screen').classList.add('hidden');
+      document.getElementById('start-screen').classList.remove('hidden');
+      showError('❌ Playlist konnte nicht geladen werden: ' + err.message);
+    });
 }
+
+// Event-Handler registrieren (mehrere Wege für TV-Kompatibilität)
+var startBtn = document.getElementById('start-btn');
+startBtn.addEventListener('click', startPlayer);
+startBtn.addEventListener('touchend', function(e) { e.preventDefault(); startPlayer(); });
+
+// Enter auf Start-Button
+startBtn.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.keyCode === 13) startPlayer();
+});
+
+// Globaler Fallback: Enter/OK irgendwo auf dem Start-Screen
+document.addEventListener('keydown', function(e) {
+  var startScreen = document.getElementById('start-screen');
+  if (startScreen.classList.contains('hidden')) return;
+  if (e.key === 'Enter' || e.keyCode === 13) startPlayer();
+});
+
+console.log('📺 IPTV Player bereit. Script vollständig geladen.');
 </script>
 </body>
 </html>
